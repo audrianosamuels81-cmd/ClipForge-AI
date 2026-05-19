@@ -1,0 +1,278 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  USER
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  EXPIRED
+}
+
+enum SubscriptionPlan {
+  FREE
+  CREATOR
+  PRO
+  AGENCY
+}
+
+enum BillingInterval {
+  MONTHLY
+  YEARLY
+}
+
+enum VideoStatus {
+  UPLOADING
+  PROCESSING
+  READY
+  FAILED
+}
+
+enum ExportStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+model User {
+  id                String   @id @default(cuid())
+  email             String   @unique
+  passwordHash      String?
+  name              String?
+  avatarUrl         String?
+  role              UserRole @default(USER)
+  emailVerified     Boolean  @default(false)
+  googleId          String?  @unique
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  subscription      Subscription?
+  videos            Video[]
+  exports           Export[]
+  aiGenerations     AiGeneration[]
+  creditsUsage      CreditsUsage[]
+  teamMemberships   TeamMember[]
+  brands            Brand[]
+  apiKeys           ApiKey[]
+  notifications     Notification[]
+  billingRecords    BillingRecord[]
+  supportTickets    SupportTicket[]
+}
+
+model Subscription {
+  id              String             @id @default(cuid())
+  userId          String             @unique
+  plan            SubscriptionPlan   @default(FREE)
+  status          SubscriptionStatus @default(TRIALING)
+  interval        BillingInterval    @default(MONTHLY)
+  currentPeriodStart DateTime?
+  currentPeriodEnd   DateTime?
+  trialEndsAt     DateTime?
+  canceledAt      DateTime?
+  provider        String?            // lemonsqueezy, paddle, paypal, etc.
+  providerId      String?            // subscription ID from provider
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  user            User               @relation(fields: [userId], references: [id])
+}
+
+model Video {
+  id              String       @id @default(cuid())
+  userId          String
+  title           String?
+  fileName        String
+  fileSize        Int
+  mimeType        String
+  duration        Float?
+  storageUrl      String
+  thumbnailUrl    String?
+  status          VideoStatus  @default(UPLOADING)
+  errorMessage    String?
+  metadata        Json?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  user            User         @relation(fields: [userId], references: [id])
+  exports         Export[]
+  aiGenerations   AiGeneration[]
+  clips           Clip[]
+}
+
+model Clip {
+  id              String       @id @default(cuid())
+  videoId         String
+  startTime       Float
+  endTime         Float
+  confidenceScore Float?
+  category        String?      // hook, emotional, funny, educational, etc.
+  transcript      String?
+  metadata        Json?
+  createdAt       DateTime     @default(now())
+
+  video           Video        @relation(fields: [videoId], references: [id])
+}
+
+model Export {
+  id              String       @id @default(cuid())
+  userId          String
+  videoId         String
+  clipIds         Json?        // IDs of clips included
+  platform        String?      // tiktok, instagram, youtube
+  aspectRatio     String?      // 9:16, 1:1, 16:9
+  status          ExportStatus @default(PENDING)
+  outputUrl       String?
+  outputFormat    String?      // mp4, mov
+  settings        Json?        // captions, effects, branding
+  creditsCost     Int          @default(1)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  user            User         @relation(fields: [userId], references: [id])
+  video           Video        @relation(fields: [videoId], references: [id])
+}
+
+model AiGeneration {
+  id              String   @id @default(cuid())
+  userId          String
+  videoId         String?
+  type            String   // caption, title, hashtag, hook, thumbnail
+  input           Json?
+  output          String?
+  model           String?
+  tokensUsed      Int?
+  creditsCost     Int      @default(1)
+  createdAt       DateTime @default(now())
+
+  user            User     @relation(fields: [userId], references: [id])
+  video           Video?   @relation(fields: [videoId], references: [id])
+}
+
+model CreditsUsage {
+  id              String   @id @default(cuid())
+  userId          String
+  action          String   // export, ai_generation, upload, etc.
+  credits         Int
+  metadata        Json?
+  createdAt       DateTime @default(now())
+
+  user            User     @relation(fields: [userId], references: [id])
+}
+
+model TeamMember {
+  id              String   @id @default(cuid())
+  teamId          String
+  userId          String
+  role            String   // owner, admin, editor, viewer
+  invitedBy       String?
+  status          String   @default("pending") // pending, active, removed
+  createdAt       DateTime @default(now())
+
+  user            User     @relation(fields: [userId], references: [id])
+  team            Team     @relation(fields: [teamId], references: [id])
+}
+
+model Team {
+  id              String       @id @default(cuid())
+  name            String
+  ownerId         String
+  brandId         String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  members         TeamMember[]
+  brands          Brand[]?
+}
+
+model Brand {
+  id              String   @id @default(cuid())
+  name            String
+  userId          String
+  teamId          String?
+  logoUrl         String?
+  primaryColor    String?
+  secondaryColor  String?
+  customDomain    String?
+  whiteLabel      Boolean  @default(false)
+  createdAt       DateTime @default(now())
+
+  user            User     @relation(fields: [userId], references: [id])
+}
+
+model BillingRecord {
+  id              String   @id @default(cuid())
+  userId          String
+  provider        String
+  providerId      String?
+  amount          Decimal  @db.Decimal(10, 2)
+  currency        String   @default("USD")
+  status          String   // succeeded, failed, refunded, pending
+  description     String?
+  invoiceUrl      String?
+  metadata        Json?
+  createdAt       DateTime @default(now())
+
+  user            User     @relation(fields: [userId], references: [id])
+}
+
+model ApiKey {
+  id              String   @id @default(cuid())
+  userId          String
+  name            String?
+  key             String   @unique
+  lastUsedAt      DateTime?
+  expiresAt       DateTime?
+  createdAt       DateTime @default(now())
+
+  user            User     @relation(fields: [userId], references: [id])
+}
+
+model Notification {
+  id              String   @id @default(cuid())
+  userId          String
+  type            String
+  title           String
+  message         String?
+  read            Boolean  @default(false)
+  link            String?
+  createdAt       DateTime @default(now())
+
+  user            User     @relation(fields: [userId], references: [id])
+}
+
+model SupportTicket {
+  id              String   @id @default(cuid())
+  userId          String
+  subject         String
+  message         String
+  status          String   @default("open") // open, in_progress, resolved, closed
+  priority        String   @default("normal") // low, normal, high, urgent
+  attachments     Json?
+  resolvedAt      DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user            User     @relation(fields: [userId], references: [id])
+}
+
+model FeatureFlag {
+  id              String   @id @default(cuid())
+  name            String   @unique
+  enabled         Boolean  @default(false)
+  description     String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
