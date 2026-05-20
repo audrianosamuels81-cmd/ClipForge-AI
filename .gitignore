@@ -35,3 +35,9 @@ dist/
 # OS files
 Thumbs.db
 elevate*
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example
+!.env.example
